@@ -11,7 +11,12 @@
       "Bash(cmd /c \"tasklist /FI \"\"PID eq 5628\"\" & tasklist /FI \"\"PID eq 24132\"\"\")",
       "Bash(cmd /c \"tasklist | findstr 5628\")",
       "Bash(cmd /c \"tasklist | findstr 24132\")",
-      "Bash(powershell -Command \"Get-Process -Id 5628, 24132 | Select-Object Id, ProcessName\")"
+      "Bash(powershell -Command \"Get-Process -Id 5628, 24132 | Select-Object Id, ProcessName\")",
+      "Bash(nvm version)",
+      "Bash(node --version)",
+      "Bash(npx prisma generate)",
+      "Bash(npx @better-auth/cli generate)",
+      "Bash(ls /h/projetos/src/generated/prisma/client*)"
     ]
   }
 }
