@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma --version)",
+      "Bash(npx prisma db push)",
+      "Bash(docker exec bootcamp-treinos-api-postgres psql -U postgres -c \"\\\\l\")",
+      "Bash(netstat -ano)",
+      "Bash(findstr :5432)",
+      "Bash(tasklist /FI \"PID eq 5628\")",
+      "Bash(tasklist /FI \"PID eq 24132\")",
+      "Bash(cmd /c \"tasklist /FI \"\"PID eq 5628\"\" & tasklist /FI \"\"PID eq 24132\"\"\")",
+      "Bash(cmd /c \"tasklist | findstr 5628\")",
+      "Bash(cmd /c \"tasklist | findstr 24132\")",
+      "Bash(powershell -Command \"Get-Process -Id 5628, 24132 | Select-Object Id, ProcessName\")"
+    ]
+  }
+}
