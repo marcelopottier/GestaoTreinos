@@ -3,6 +3,7 @@ import "dotenv/config";
 import fastifyCors from "@fastify/cors";
 import fastifySwagger from "@fastify/swagger";
 import fastifyApiReference from "@scalar/fastify-api-reference";
+import { fromNodeHeaders } from "better-auth/node";
 import Fastify from "fastify";
 import {
   jsonSchemaTransform,
@@ -12,7 +13,10 @@ import {
 } from "fastify-type-provider-zod";
 import { z } from "zod";
 
+import { NotFoundError } from "./errors/index.js";
+import { WeekDay } from "./generated/prisma/enums.js";
 import { auth } from "./lib/auth.js";
+import { CreateWorkoutPlan } from "./usecases/CreateWorkoutPlan.js";
 
 const app = Fastify({
   logger: true,
@@ -39,56 +43,12 @@ app.register(fastifySwagger, {
 });
 
 await app.register(fastifyCors, {
-  origin: ["http://localhost:3000"],
+  origin: ["http://localhost:3000", "http://localhost:8081"],
   credentials: true,
 });
 
-await app.register(fastifyApiReference, {
-  routePrefix: "/docs",
-  configuration: {
-    sources: [
-      {
-        title: "Bootcamp Treinos API",
-        slug: "bootcamp-treinos-api",
-        url: "/swagger.json",
-      },
-      {
-        title: "Auth API",
-        slug: "auth-api",
-        url: "/api/auth/open-api/generated-schema",
-      },
-    ],
-  },
-});
-
-app.withTypeProvider<ZodTypeProvider>().route({
-  method: "GET",
-  url: "/swagger.json",
-  schema: {
-    hide: true,
-  },
-  handler: (request, reply) => {
-    reply.send(app.swagger());
-  },
-});
-
-app.withTypeProvider<ZodTypeProvider>().route({
-  method: "GET",
-  url: "/",
-  schema: {
-    description: "Endpoint de teste",
-    tags: ["Hello World"],
-    response: {
-      200: z.object({
-        message: z.string(),
-      }),
-    },
-  },
-  handler: (request, reply) => {
-    reply.send({ message: "Hello, World!" });
-  },
-});
-
+// Proxy auth requests to the `better-auth` handler so the open-api
+// document is available at `/api/auth/open-api/generated-schema`.
 app.route({
   method: ["GET", "POST"],
   url: "/api/auth/*",
@@ -121,6 +81,152 @@ app.route({
         code: "AUTH_FAILURE",
       });
     }
+  },
+});
+
+await app.register(fastifyApiReference, {
+  routePrefix: "/docs",
+  configuration: {
+    sources: [
+      {
+        title: "Bootcamp Treinos API",
+        slug: "bootcamp-treinos-api",
+        url: "/swagger.json",
+      },
+      {
+        title: "Auth API",
+        slug: "auth-api",
+        url: "/api/auth/open-api/generate-schema",
+      },
+    ],
+  },
+});
+
+app.withTypeProvider<ZodTypeProvider>().route({
+  method: "POST",
+  url: "/workout-plans",
+  schema: {
+    body: z.object({
+      name: z.string().trim().min(1),
+      workoutDays: z.array(
+        z.object({
+          name: z.string().trim().min(1),
+          weekDay: z.enum(WeekDay),
+          isRest: z.boolean().default(false),
+          estimatedDurationInSeconds: z.number().min(1),
+          exercises: z.array(
+            z.object({
+              order: z.number().min(0),
+              name: z.string().trim().min(1),
+              sets: z.number().min(1),
+              reps: z.number().min(1),
+              restTimeInSeconds: z.number().min(1),
+            }),
+          ),
+        }),
+      ),
+    }),
+    response: {
+      201: z.object({
+        id: z.uuid(),
+        name: z.string().trim().min(1),
+        workoutDays: z.array(
+          z.object({
+            name: z.string().trim().min(1),
+            weekDay: z.enum(WeekDay),
+            isRest: z.boolean().default(false),
+            estimatedDurationInSeconds: z.number().min(1),
+            exercises: z.array(
+              z.object({
+                order: z.number().min(0),
+                name: z.string().trim().min(1),
+                sets: z.number().min(1),
+                reps: z.number().min(1),
+                restTimeInSeconds: z.number().min(1),
+              }),
+            ),
+          }),
+        ),
+      }),
+      400: z.object({
+        error: z.string(),
+        code: z.string(), // exemplo: INVALID_WEEKDAY
+      }),
+      401: z.object({
+        error: z.string(),
+        code: z.string(),
+      }),
+      404: z.object({
+        error: z.string(),
+        code: z.string(),
+      }),
+      500: z.object({
+        error: z.string(),
+        code: z.string(),
+      }),
+    },
+  },
+  handler: async (request, reply) => {
+    try {
+      const session = await auth.api.getSession({
+        headers: fromNodeHeaders(request.headers),
+      });
+      if (!session || !session.user) {
+        return reply.status(401).send({
+          error: "Unauthorized",
+          code: "UNAUTHORIZED",
+        });
+      }
+      const createWorkoutPlan = new CreateWorkoutPlan();
+      const result = await createWorkoutPlan.execute({
+        userId: session.user.id,
+        name: request.body.name,
+        workoutDays: request.body.workoutDays,
+      });
+      return reply.status(201).send(result);
+    } catch (error) {
+      app.log.error(error);
+
+      if (error instanceof NotFoundError) {
+        return reply.status(404).send({
+          error: error.message,
+          code: "NOT_FOUND",
+        });
+      }
+
+      return reply.status(500).send({
+        error: "Internal Server Error",
+        code: "INTERNAL_SERVER_ERROR",
+      });
+    }
+  },
+});
+
+app.withTypeProvider<ZodTypeProvider>().route({
+  method: "GET",
+  url: "/swagger.json",
+  schema: {
+    hide: true,
+  },
+  handler: (request, reply) => {
+    reply.send(app.swagger());
+  },
+});
+
+app.withTypeProvider<ZodTypeProvider>().route({
+  method: "GET",
+  url: "/",
+  schema: {
+    description: "Endpoint de teste",
+    tags: ["Hello World"],
+    response: {
+      200: z.object({
+        message: z.string(),
+      }),
+    },
+  },
+  handler: (request, reply) => {
+    reply.send({ message: "Hello, World!" });
   },
 });
 
